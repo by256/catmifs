@@ -3,7 +3,7 @@
 CATMIFS
 ====
 
-Parallelized **Exact** Mutual Information-based Feature Selection for **Categorical** Features. This module works only for categorical features and targets, but as a result, scales to datasets of millions of features.
+Parallelized **Exact** Mutual Information-based Feature Selection for **Categorical** Features. This module works only for categorical features and targets, but as a result, scales to datasets of millions of instances and thousands of features.
 
 Related blog post here_
 
@@ -29,7 +29,7 @@ Download, import and do as you would with any other scikit-learn method:
 Description
 -----------
 
-MIFS stands for Mutual Information based Feature Selection. This class contains routines for selecting features using both continuous and discrete y variables. Three selection algorithms are implemented: JMI, JMIM and MRMR.
+CATMIFS stands for Categorical Mutual Information based Feature Selection. This class contains routines for selecting features using both continuous and discrete y variables. Three selection algorithms are implemented: JMI, JMIM and MRMR.
 
 This implementation tries to mimic the scikit-learn interface, so use fit, transform or fit_transform, to run the feature selection.
 
