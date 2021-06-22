@@ -1,9 +1,9 @@
 .. -*- mode: rst -*-
 
-MIFS
+CATMIFS
 ====
 
-Parallelized Exact Mutual Information-based Feature Selection for Categorical Features. This module works only for categorical features and targets, but as a result, scales to datasets of millions of features.
+Parallelized **Exact** Mutual Information-based Feature Selection for **Categorical** Features. This module works only for categorical features and targets, but as a result, scales to datasets of millions of features.
 
 Related blog post here_
 
