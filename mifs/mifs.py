@@ -1,14 +1,13 @@
 """
-Parallelized Mutual Information based Feature Selection module.
+Parallelized Exact Mutual Information based Feature Selection module for categorical distributions.
+Adapted from code written by Daniel Homola <dani.homola@gmail.com>
 
-Author: Daniel Homola <dani.homola@gmail.com>
+Author: Batuhan Yildirim <by256@cam.ac.uk>
 License: BSD 3 clause
 """
 
 import numpy as np
-from scipy import signal
 from sklearn.utils import check_X_y
-from sklearn.preprocessing import StandardScaler
 from multiprocessing import cpu_count
 from sklearn.base import BaseEstimator
 from sklearn.feature_selection._base import SelectorMixin
@@ -38,20 +37,8 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         - 'JMIM' : Joint Mutual Information Maximisation [2]
         - 'MRMR' : Max-Relevance Min-Redundancy [3]
 
-    k : int, default = 5
-        Sets the number of samples to use for the kernel density estimation
-        with the kNN method. Kraskov et al. recommend a small integer between
-        3 and 10.
-
-    n_features : int or string, default = 'auto'
-        If int, it sets the number of features that has to be selected from X.
-        If 'auto' this is determined automatically based on the amount of
-        mutual information the previously selected features share with y.
-
-    categorical : Boolean, default = True
-        If True, y is assumed to be a categorical class label. If False, y is
-        treated as a continuous. Consequently this parameter determines the
-        method of estimation of the MI between the predictors in X and y.
+    n_features : int
+        Ssets the number of features that has to be selected from X.
 
     n_jobs : int, optional (default=1)
         The number of threads to open if possible.
@@ -122,12 +109,9 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         Pattern Analysis & Machine Intelligence 2005
     """
 
-    def __init__(self, method='JMI', k=5, n_features='auto', categorical=True,
-                 n_jobs=1, verbose=0):
-        self.method = method
-        self.k = k
+    def __init__(self, n_features, method='JMI', n_jobs=-1, verbose=0):
         self.n_features = n_features
-        self.categorical = categorical
+        self.method = method
         self.n_jobs = n_jobs
         self.verbose = verbose
         self._support_mask = None
@@ -163,10 +147,7 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         # list of all features
         F = list(range(p))
 
-        if self.n_features != 'auto':
-            feature_mi_matrix = np.zeros((self.n_features, p))
-        else:
-            feature_mi_matrix = np.zeros((n, p))
+        feature_mi_matrix = np.zeros((self.n_features, p))
         feature_mi_matrix[:] = np.nan
         S_mi = []
 
@@ -174,11 +155,13 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         # FIND FIRST FEATURE
         # ---------------------------------------------------------------------
 
-        xy_MI = np.array(mi.get_first_mi_vector(self, self.k))
+        # compute MI(x_i; y)
+        MI_xy = mi.get_feature_target_mi(X, y, self.n_jobs)
+        # print(MI_xy)
 
         # choose the best, add it to S, remove it from F
-        S, F = self._add_remove(S, F, bn.nanargmax(xy_MI))
-        S_mi.append(bn.nanmax(xy_MI))
+        S, F = self._add_remove(S, F, bn.nanargmax(MI_xy))
+        S_mi.append(bn.nanmax(MI_xy))
 
         # notify user
         if self.verbose > 0:
@@ -187,26 +170,26 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         # ---------------------------------------------------------------------
         # FIND SUBSEQUENT FEATURES
         # ---------------------------------------------------------------------
-        if self.n_features == 'auto': n_features = np.inf
-        else: n_features = self.n_features
+        n_features = self.n_features
          
         while len(S) < n_features:
             # loop through the remaining unselected features and calculate MI
             s = len(S) - 1
-            feature_mi_matrix[s, F] = mi.get_mi_vector(self, F, S[-1])
+            # feature_mi_matrix[s, F] = mi.get_mi_vector(self, F, S[-1])
+            feature_mi_matrix[s, F] = mi.get_feature_feature_mi(X, F, S[-1], self.n_jobs)
 
             # make decision based on the chosen FS algorithm
             fmm = feature_mi_matrix[:len(S), F]
             if self.method == 'JMI':
                 selected = F[bn.nanargmax(bn.nansum(fmm, axis=0))]
             elif self.method == 'JMIM':
-                if bn.allnan(bn.nanmin(fmm, axis = 0)):
+                if bn.allnan(bn.nanmin(fmm, axis=0)):
                     break
                 selected = F[bn.nanargmax(bn.nanmin(fmm, axis=0))]
             elif self.method == 'MRMR':
-                if bn.allnan(bn.nanmean(fmm, axis = 0)):
+                if bn.allnan(bn.nanmean(fmm, axis=0)):
                     break
-                MRMR = xy_MI[F] - bn.nanmean(fmm, axis=0)
+                MRMR = MI_xy[F] - bn.nanmean(fmm, axis=0)
                 selected = F[bn.nanargmax(MRMR)]
                 S_mi.append(bn.nanmax(MRMR))
 
@@ -218,14 +201,6 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
             # notify user
             if self.verbose > 0:
                 self._print_results(S, S_mi)
-
-            # if n_features == 'auto', let's check the S_mi to stop
-            if self.n_features == 'auto' and len(S) > 10:
-                # smooth the 1st derivative of the MI values of previously sel
-                MI_dd = signal.savgol_filter(S_mi[1:], 9, 2, 1)
-                # does the mean of the last 5 converge to 0?
-                if np.abs(np.mean(MI_dd[-5:])) < 1e-3:
-                    break
 
         # ---------------------------------------------------------------------
         # SAVE RESULTS
@@ -246,33 +221,11 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
         # checking input data and scaling it if y is continuous
         X, y = check_X_y(X, y)
 
-        if not self.categorical:
-            ss = StandardScaler()
-            X = ss.fit_transform(X)
-            y = ss.fit_transform(y.reshape(-1, 1))
-
         # sanity checks
         methods = ['JMI', 'JMIM', 'MRMR']
         if self.method not in methods:
             raise ValueError('Please choose one of the following methods:\n' +
                              '\n'.join(methods))
-
-        if not isinstance(self.k, int):
-            raise ValueError("k must be an integer.")
-        if self.k < 1:
-            raise ValueError('k must be larger than 0.')
-        if self.categorical and np.any(self.k > np.bincount(y)):
-            raise ValueError('k must be smaller than your smallest class.')
-
-        if not isinstance(self.categorical, bool):
-            raise ValueError('Categorical must be Boolean.')
-        if self.categorical and np.unique(y).shape[0] > 5:
-            print ('Are you sure y is categorical? It has more than 5 levels.')
-        if not self.categorical and self._isinteger(y):
-            print ('Are you sure y is continuous? It seems to be discrete.')
-        if self._isinteger(X):
-            print ('The values of X seem to be discrete. MI_FS will treat them'
-                   'as continuous.')
         return X, y
 
     def _add_remove(self, S, F, i):
@@ -286,12 +239,9 @@ class MutualInformationFeatureSelector(BaseEstimator, SelectorMixin):
 
     def _print_results(self, S, MIs):
         out = ''
-        if self.n_features == 'auto':
-            out += 'Auto selected feature #' + str(len(S)) + ' : ' + str(S[-1])
-        else:
-            out += ('Selected feature #' + str(len(S)) + ' / ' +
-                    str(self.n_features) + ' : ' + str(S[-1]))
+        out += ('Selected feature #' + str(len(S)) + ' / ' +
+                str(self.n_features) + ' : ' + str(S[-1]))
 
         if self.verbose > 1:
             out += ', ' + self.method + ' : ' + str(MIs[-1])
-        print (out)
+        print(out)
