@@ -3,7 +3,7 @@
 MIFS
 ====
 
-Parallelized Mutual Information based Feature Selection module.
+Parallelized Exact Mutual Information-based Feature Selection for Categorical Features.
 
 Related blog post here_
 
@@ -41,20 +41,16 @@ Docs
 Parameters
 ~~~~~~~~~~
 
+**n_features** : int::
+
+  > Sets the number of features that has to be selected from X.
+
 **method** : string, default = 'JMI'::
 
   > Which mutual information based feature selection method to use:
   > * 'JMI' : Joint Mutual Information [1]
   > * 'JMIM' : Joint Mutual Information Maximisation [2]
   > * 'MRMR' : Max-Relevance Min-Redundancy [3]
-
-**k** : int, default = 5::
-
-  > Sets the number of samples to use for the kernel density estimation with the kNN method. Kraskov et al. recommend a small integer between 3 and 10.
-
-**n_features** : int or string, default = 'auto'::
-
-  > If int, it sets the number of features that has to be selected from X. If 'auto' this is determined automatically based on the amount of mutual information the previously selected features share with y.
 
 **categorical** : Boolean, default = True::
 
